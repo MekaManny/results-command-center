@@ -1,0 +1,43 @@
+//@version=6
+// Round 2, strategy S2: daily pullback swing. Long only.
+// Apply to a DAILY chart of SPY, QQQ, BTCUSDT or ETHUSDT (one chart per market).
+// Mirrors trading/round2/swing.py with the parameters selected on the first half
+// of the walk-forward test: RSI(2) < 10, SMA(100) trend filter, 2 x ATR(14) stop.
+// Set commission to 0.01 for SPY/QQQ and 0.10 for crypto to match the backtest.
+strategy("R2-S2 Daily Pullback Swing", overlay = true, initial_capital = 2500,
+     default_qty_type = strategy.fixed, pyramiding = 0,
+     commission_type = strategy.commission.percent, commission_value = 0.01,
+     calc_on_every_tick = false, process_orders_on_close = false)
+
+riskUsd     = input.float(25.0, "Risk per trade ($)")
+maxNotional = input.float(2500, "Max position notional ($)")
+rsiLen      = input.int(2,   "RSI length")
+rsiThr      = input.float(10, "RSI entry threshold")
+trendLen    = input.int(100, "Trend SMA length")
+exitLen     = input.int(5,   "Exit SMA length")
+atrLen      = input.int(14,  "ATR length")
+stopAtr     = input.float(2.0, "Stop (ATR multiples)")
+maxHold     = input.int(10,  "Max bars in trade")
+
+trendSma = ta.sma(close, trendLen)
+exitSma  = ta.sma(close, exitLen)
+rsiVal   = ta.rsi(close, rsiLen)
+atrVal   = ta.atr(atrLen)
+
+// Entry: signal on the close, market order fills at the next bar's open.
+// The stop is placed stopAtr * ATR below the actual fill price.
+longSig = close > trendSma and rsiVal < rsiThr
+if strategy.position_size == 0 and longSig and not na(atrVal)
+    stopDist = stopAtr * atrVal
+    qty = math.min(riskUsd / stopDist, maxNotional / close)
+    strategy.entry("L", strategy.long, qty = qty)
+    strategy.exit("L stop", from_entry = "L", loss = stopDist / syminfo.mintick)
+
+// Exit: close above the 5-bar SMA, or the 10th bar in the trade; sells at the next open.
+if strategy.position_size > 0
+    barsHeld = bar_index - strategy.opentrades.entry_bar_index(0)
+    if close > exitSma or barsHeld >= maxHold - 1
+        strategy.close("L")
+
+plot(trendSma, "Trend SMA", color.orange)
+plot(exitSma, "Exit SMA", color.gray)
