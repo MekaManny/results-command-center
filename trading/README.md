@@ -41,21 +41,34 @@ shorter than six months).
 | S3b fade (tuned) | SPY+QQQ | 117 | 60.7 | 1.68 | $91 | +$117 |
 
 S3b's parameters were chosen from 12 variants on the same 60 sessions it is
-reported on, so its numbers are in-sample and optimistic. Nothing here has
-passed a six-month out-of-sample test.
+reported on, so its numbers are in-sample and optimistic. It later failed the
+out-of-sample test below.
 
-## Out-of-sample test (not yet run on 6+ months of data)
+## Out-of-sample test: FAIL (run 2026-11-11)
+
+Data: Alpaca IEX feed, SPY + QQQ 5-minute bars, 252 sessions from 2025-11-10
+to 2026-11-10, split at 2026-05-13. $25 risk per trade.
+
+| Test | Period | Trades | Win % | Profit factor | Max DD | Avg month |
+|---|---|---|---|---|---|---|
+| Tuned on first half (ADX<20, BB 2.5, stop 1.5 ATR), in-sample | 2025-11-10 to 2026-05-12 | 89 | 48.3 | 1.21 | $278 | +$24 |
+| Same parameters, out-of-sample | 2026-05-13 to 2026-11-10 | 82 | 43.9 | 0.69 | $360 | -$38 |
+| Shipped S3b (ADX<25, BB 2.0, stop 2.5 ATR), data it never saw | 2025-11-10 to 2026-08-17 | 508 | 48.0 | 0.80 | $1,144 | -$87 |
+| Shipped S3b, its own tuning window | 2026-08-18 to 2026-11-10 | 117 | 60.7 | 1.65 | $95 | +$113 |
+
+Promotion rule: out-of-sample profit factor of at least 1.2 and max drawdown
+under $150. Result: 0.69 and $360, so the fade is **not** promoted to paper
+trading. The earlier 60-session result was a product of in-sample tuning: the
+same parameters lose money on the nine months before that window. The
+strategy is not to be re-tuned on this data.
+
+Reproduce:
 
 ```
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 12
 python3 trading/walkforward.py <data_dir>
 ```
-
-`walkforward.py` picks one parameter set on the first half of the sessions,
-runs it untouched on the second half, and prints a verdict. Promotion rule:
-out-of-sample profit factor of at least 1.2 and max drawdown under $150.
-If it fails, the strategy is dropped; it is not re-tuned on the test half.
 
 ## Pine script check
 
