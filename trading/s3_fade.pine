@@ -1,0 +1,65 @@
+//@version=6
+// S3b: Bollinger / RSI(2) mean-reversion fade for SPY and QQQ, 5-minute chart.
+// Run on regular-session bars only (extended hours OFF), otherwise indicator values differ from the backtest.
+// Mirrors trading/backtest.py: signal on bar close, fill on next bar open, fixed stop and target.
+strategy("S3b Mean-Reversion Fade (SPY/QQQ 5m)", overlay = true, initial_capital = 2500,
+     default_qty_type = strategy.fixed, pyramiding = 0,
+     commission_type = strategy.commission.percent, commission_value = 0.01,
+     calc_on_every_tick = false, process_orders_on_close = false)
+
+riskUsd     = input.float(25.0,  "Risk per trade ($)")
+maxNotional = input.float(10000, "Max position notional ($)")
+bbLen       = input.int(20,   "Bollinger length")
+bbMult      = input.float(2.0, "Bollinger multiplier")
+rsiLen      = input.int(2,    "RSI length")
+rsiLow      = input.float(10, "RSI long threshold")
+rsiHigh     = input.float(90, "RSI short threshold")
+adxLen      = input.int(14,   "ADX length")
+adxMax      = input.float(25, "Max ADX")
+atrLen      = input.int(14,   "ATR length")
+stopAtr     = input.float(2.5, "Stop (ATR multiples)")
+maxHold     = input.int(12,   "Max bars in trade")
+maxTrades   = input.int(3,    "Max trades per day")
+
+tz   = "America/New_York"
+mins = hour(time, tz) * 60 + minute(time, tz)
+inWindow = mins >= 600 and mins < 930      // signal bars 10:00 through 15:25 ET
+flatBar  = mins >= 955                     // 15:55 ET bar: close everything
+
+basis = ta.sma(close, bbLen)
+dev   = ta.stdev(close, bbLen)
+rsi2  = ta.rsi(close, rsiLen)
+atr   = ta.atr(atrLen)
+[diPlus, diMinus, adx] = ta.dmi(adxLen, adxLen)
+
+newDay = ta.change(dayofmonth(time, tz)) != 0
+var int startCount = 0
+if newDay
+    startCount := strategy.closedtrades + strategy.opentrades
+tradesToday = strategy.closedtrades + strategy.opentrades - startCount
+
+quiet     = adx < adxMax
+longSig   = inWindow and quiet and close < basis - bbMult * dev and rsi2 < rsiLow
+shortSig  = inWindow and quiet and close > basis + bbMult * dev and rsi2 > rsiHigh
+
+stopDist  = stopAtr * atr
+longOk    = longSig  and stopDist >= close * 0.0005 and basis - close >= 0.5 * stopDist
+shortOk   = shortSig and stopDist >= close * 0.0005 and close - basis >= 0.5 * stopDist
+qty       = math.floor(math.min(riskUsd / stopDist, maxNotional / close))
+canEnter  = strategy.position_size == 0 and tradesToday < maxTrades and qty >= 1
+
+if canEnter and longOk
+    strategy.entry("L", strategy.long, qty = qty)
+    strategy.exit("L exit", "L", stop = close - stopDist, limit = basis)
+if canEnter and shortOk
+    strategy.entry("S", strategy.short, qty = qty)
+    strategy.exit("S exit", "S", stop = close + stopDist, limit = basis)
+
+if strategy.position_size != 0
+    held = bar_index - strategy.opentrades.entry_bar_index(0)
+    if flatBar or held >= maxHold
+        strategy.close_all(immediately = true)
+
+plot(basis, "Mean (target)", color.gray)
+plot(basis + bbMult * dev, "Upper band", color.red)
+plot(basis - bbMult * dev, "Lower band", color.green)
