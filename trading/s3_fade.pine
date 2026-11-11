@@ -30,9 +30,9 @@ basis = ta.sma(close, bbLen)
 dev   = ta.stdev(close, bbLen)
 rsi2  = ta.rsi(close, rsiLen)
 atr   = ta.atr(atrLen)
-[_, _, adx] = ta.dmi(adxLen, adxLen)
+[diPlus, diMinus, adx] = ta.dmi(adxLen, adxLen)
 
-newDay = ta.change(time("D", tz)) != 0
+newDay = ta.change(dayofmonth(time, tz)) != 0
 var int startCount = 0
 if newDay
     startCount := strategy.closedtrades + strategy.opentrades
