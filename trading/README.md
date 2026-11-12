@@ -6,6 +6,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `s3_fade.pine` — TradingView Pine v6 script for the top-ranked strategy.
 - `fetch_alpaca.py` — downloads 6+ months of SPY/QQQ 5-minute bars from Alpaca (IEX feed).
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
+- `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 
 ## Reproduce
 
@@ -68,6 +69,50 @@ Reproduce:
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 12
 python3 trading/walkforward.py <data_dir>
+```
+
+## Bull-flag continuation walk-forward: FAIL on all four (run 2026-11-11)
+
+**Do not paper trade. No re-tuning on this data.**
+
+`bullflag.py`, run once with rules fixed before any data was loaded. Long only:
+an impulse of at least 3, 4 or 5 ATR over 3, 5 or 8 bars; a 3 to 10 bar flag
+that stays under the impulse high, retraces less than 38.2% or 50% of it and
+has a flat or falling close slope; entry at the next open after a close above
+the flag high; stop just below the flag low; target 2R; $25 risk; 0.06% per
+side crypto, 0.01% per side ETFs. The 18 variants were tuned on the first half
+only, one pick per asset class (BTC+ETH, SPY+QQQ, minimum 30 first-half
+trades), and the pick was run once on the second half.
+
+Data: BTC and ETH, Binance 5-minute bars, 2025-10-31 to 2026-10-31, split at
+2026-05-02. SPY and QQQ, Alpaca IEX 5-minute bars, 2025-11-11 to 2026-11-11,
+split at 2026-05-13.
+
+| Asset | Half | Trades | Win % | Profit factor | Max DD | Avg month | Verdict |
+|---|---|---|---|---|---|---|---|
+| BTC | First (tuned) | 29 | 48.3 | 1.22 | $153 | +$16 | |
+| BTC | Second (unseen) | 42 | 38.1 | 0.60 | $420 | -$51 | **FAIL** |
+| ETH | First (tuned) | 33 | 24.2 | 0.42 | $531 | -$71 | |
+| ETH | Second (unseen) | 31 | 45.2 | 0.99 | $217 | -$1 | **FAIL** |
+| SPY | First | no variant selected | | | | | **FAIL** |
+| QQQ | First | no variant selected | | | | | **FAIL** |
+
+Crypto selection: impulse of 4 ATR over 5 bars, 50% retrace cap.
+
+SPY and QQQ: no variant reached 30 trades in the first half, so nothing was
+selected and the second half was never run. The most active variant (3 ATR
+over 8 bars, 50% retrace cap) made 26 first-half trades across both (11 SPY,
+15 QQQ) at a profit factor of 0.40.
+
+Promotion rule: second-half profit factor of at least 1.2 and max drawdown
+under $150. No asset met it.
+
+Reproduce (crypto zips as in "Reproduce" above, for 2025-11 to 2026-10):
+
+```
+export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
+python3 trading/fetch_alpaca.py <data_dir> 12
+python3 trading/bullflag.py <data_dir>
 ```
 
 ## Pine script check
