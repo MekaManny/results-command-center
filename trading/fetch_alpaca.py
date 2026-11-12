@@ -1,4 +1,4 @@
-"""Download 5-minute SPY and QQQ bars from Alpaca (IEX feed) for the backtester.
+"""Download 5-minute SPY and QQQ bars from Alpaca (SIP feed) for the backtester.
 
 Usage: python3 trading/fetch_alpaca.py <data_dir> [months_back=12]
 
@@ -21,7 +21,7 @@ URL = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
 def fetch(sym, start, end, headers):
     bars, token = [], None
     while True:
-        q = dict(timeframe="5Min", start=start, end=end, feed="iex", adjustment="split", limit=10000)
+        q = dict(timeframe="5Min", start=start, end=end, feed="sip", adjustment="split", limit=10000)
         if token:
             q["page_token"] = token
         req = urllib.request.Request(URL.format(sym=sym) + "?" + urllib.parse.urlencode(q), headers=headers)
@@ -49,7 +49,7 @@ def main():
         ts = [int(dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00")).timestamp()) for b in bars]
         quote = {k: [b[a] for b in bars] for k, a in
                  [("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v")]}
-        out = {"chart": {"result": [{"meta": {"symbol": sym, "source": "alpaca-iex"},
+        out = {"chart": {"result": [{"meta": {"symbol": sym, "source": "alpaca-sip"},
                                      "timestamp": ts, "indicators": {"quote": [quote]}}]}}
         with open(os.path.join(data_dir, f"{sym}.json"), "w") as f:
             json.dump(out, f)

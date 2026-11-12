@@ -4,9 +4,10 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 
 - `backtest.py` — bar-by-bar backtester and the three strategy definitions.
 - `s3_fade.pine` — TradingView Pine v6 script for the top-ranked strategy.
-- `fetch_alpaca.py` — downloads 6+ months of SPY/QQQ 5-minute bars from Alpaca (IEX feed).
+- `fetch_alpaca.py` — downloads SPY/QQQ 5-minute bars from Alpaca, all hours (SIP feed since the CPI/FOMC test; the earlier results below were run on IEX bars).
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
+- `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
 
 ## Reproduce
 
@@ -113,6 +114,118 @@ Reproduce (crypto zips as in "Reproduce" above, for 2025-11 to 2026-10):
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 12
 python3 trading/bullflag.py <data_dir>
+```
+
+## CPI/FOMC second-move walk-forward: not enough trades to know (run 2026-11-11)
+
+**Do not paper trade. No re-tuning on this data.**
+
+`cpi_fomc.py`, run once with rules fixed before any data was loaded. Events are
+CPI releases (08:30 New York) and FOMC statements (14:00 New York) only. The
+15 minutes after the release are skipped. Initial direction is the close of the
+last bar of that window (08:40 / 14:10 bar) versus the close of the bar just
+before the release (08:25 / 13:55 bar); up trades long, down trades short.
+Pattern bars are regular-session bars from max(release + 15 min, 09:30) for the
+wait window. A pullback is 1 to N consecutive bars closing against the initial
+direction (close versus the bar's own open). If any pattern bar gives back the
+retrace cap or more of the initial move, measured from the skip-window close,
+the event is dead. Entry at the next open after the first bar following the
+pullback closes back in the initial direction and beyond the pullback's far
+side (above the pullback high for a long); stop just beyond the pullback
+extreme (pullback low for a long); target 2R; one trade per event; no signal
+bar at or after 15:30, flat on the 15:55 bar; $25 risk (notional capped at
+$10,000); 0.01% per side. The 18 variants (wait 30/60/90 minutes, pullback of
+up to 1/2/3 bars, retrace cap 38.2%/50%) were tuned on the first half only,
+one pick for SPY+QQQ (minimum 10 combined first-half trades), and the pick was
+run once on the second half.
+
+Data: SPY and QQQ, Alpaca **SIP** feed (not IEX as in the earlier tests),
+5-minute bars, all hours, 2024-11-11 to 2026-11-11, 502 sessions each, split
+at 2025-11-11. IEX was dropped because it has the 08:25 and 08:40 pre-market
+bars on only a minority of CPI mornings; on SIP every event had its reference
+bars and no event was skipped.
+
+| Asset | Half | Events | Trades | Win % | Profit factor | Max DD | Avg month | Rule |
+|---|---|---|---|---|---|---|---|---|
+| SPY | First (tuned) | 20 | 5 | 80.0 | 8.63 | $15 | +$10 | |
+| SPY | Second (unseen) | 20 | 2 | 50.0 | 1.58 | $27 | +$1 | PASS by the rule, meaningless on 2 trades |
+| QQQ | First (tuned) | 20 | 5 | 80.0 | 8.06 | $19 | +$11 | |
+| QQQ | Second (unseen) | 20 | 1 | 0.0 | 0.00 | $26 | -$2 | **FAIL** |
+
+Selection: 60-minute wait, 1-bar pullback, 50% retrace cap (exactly 10
+combined first-half trades, the minimum; pullback length made no difference).
+
+Promotion rule: second-half profit factor of at least 1.2 and max drawdown
+under $150. SPY meets it on paper (1.58, $27) but on two trades, one winner
+and one loser, netting $16 in 12 months. QQQ fails. **Verdict for both: not
+enough trades to know. Do not paper trade, do not re-tune on this data.**
+
+Why it is not evidence either way:
+
+- The second half produced three trades in total across both assets.
+- The ten first-half trades are the same five events on both assets, all
+  between December 2024 and March 2025; neither asset traded from April to
+  November 2025.
+- Of 40 events per asset, 31 on each died at the retrace cap, so
+  the pattern triggers about three or four times a year per asset.
+
+Event calendar and per-event log (selected variant; initial direction, then
+outcome). CPI dates are from the BLS release schedule and CPI archive: the
+October 2025 CPI was never published (2025 lapse in appropriations), November
+2025 moved to 2025-12-18 and January 2026 to 2026-02-13. FOMC dates are from
+the federalreserve.gov meeting calendar; the 2025-08-22 notation vote had no
+policy statement and is not an event.
+
+| Date | Event | Half | SPY | QQQ |
+|---|---|---|---|---|
+| 2024-11-13 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2024-12-11 | CPI | First | up, **traded** | up, **traded** |
+| 2024-12-18 | FOMC | First | down, **traded** | down, **traded** |
+| 2025-01-15 | CPI | First | up, **traded** | up, **traded** |
+| 2025-01-29 | FOMC | First | down, **traded** | down, **traded** |
+| 2025-02-12 | CPI | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-03-12 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2025-03-19 | FOMC | First | up, **traded** | up, **traded** |
+| 2025-04-10 | CPI | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-05-07 | FOMC | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-05-13 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2025-06-11 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2025-06-18 | FOMC | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-07-15 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2025-07-30 | FOMC | First | down, retrace cap hit | up, retrace cap hit |
+| 2025-08-12 | CPI | First | up, retrace cap hit | up, retrace cap hit |
+| 2025-09-11 | CPI | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-09-17 | FOMC | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-10-24 | CPI | First | up, no setup | up, no setup |
+| 2025-10-29 | FOMC | First | down, retrace cap hit | down, retrace cap hit |
+| 2025-12-10 | FOMC | Second | up, retrace cap hit | up, retrace cap hit |
+| 2025-12-18 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-01-13 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-01-28 | FOMC | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-02-13 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-03-11 | CPI | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-03-18 | FOMC | Second | down, no setup | down, no setup |
+| 2026-04-10 | CPI | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-04-29 | FOMC | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-05-12 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-06-10 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-06-17 | FOMC | Second | down, **traded** | down, **traded** |
+| 2026-07-14 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-07-29 | FOMC | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-08-12 | CPI | Second | up, retrace cap hit | up, retrace cap hit |
+| 2026-09-11 | CPI | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-09-16 | FOMC | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-10-14 | CPI | Second | down, **traded** | down, no setup |
+| 2026-10-28 | FOMC | Second | down, retrace cap hit | down, retrace cap hit |
+| 2026-11-10 | CPI | Second | down, retrace cap hit | down, retrace cap hit |
+
+Reproduce (the fetch now uses the SIP feed, so re-running the older IEX-based
+tests above will give slightly different numbers):
+
+```
+export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
+python3 trading/fetch_alpaca.py <data_dir> 24
+python3 trading/cpi_fomc.py <data_dir>
 ```
 
 ## Pine script check
