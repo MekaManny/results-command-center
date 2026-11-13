@@ -69,6 +69,7 @@ import itertools
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -102,7 +103,7 @@ def fetch_crypto(data_dir, months):
             q = dict(symbols=pair, timeframe="5Min", start=start, end=end, limit=10000, sort="asc")
             if token:
                 q["page_token"] = token
-            page = None
+            page, waits = None, 0
             while page is None:
                 req = urllib.request.Request(CRYPTO_URL + "?" + urllib.parse.urlencode(q), headers=headers)
                 try:
@@ -110,10 +111,15 @@ def fetch_crypto(data_dir, months):
                         page = json.load(r)
                 except urllib.error.HTTPError as e:
                     body = e.read().decode("utf-8", "replace")[:300]
-                    if e.code in (401, 403) and not headers:
-                        print(f"Alpaca wants keys for crypto bars (HTTP {e.code}). Typed keys are hidden and not saved.")
+                    if e.code in (401, 403, 429) and not headers:
+                        print(f"Alpaca refused the keyless request (HTTP {e.code}). Typed keys are hidden and not saved.")
                         headers = {"APCA-API-KEY-ID": getpass.getpass("Alpaca key ID: ").strip(),
                                    "APCA-API-SECRET-KEY": getpass.getpass("Alpaca secret key: ").strip()}
+                    elif e.code == 429 and waits < 20:
+                        waits += 1
+                        pause = min(int(e.headers.get("Retry-After") or 20), 60)
+                        print(f"  {pair}: rate limited, waiting {pause}s ({len(bars)} bars so far)")
+                        time.sleep(pause)
                     else:
                         sys.exit(f"Alpaca HTTP {e.code} for {pair}: {body}")
             bars += (page.get("bars") or {}).get(pair) or []
