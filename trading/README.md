@@ -9,6 +9,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
 - `lasthalfhour.py` — last-half-hour momentum on SPY/QQQ and its walk-forward test (result below: FAIL on both).
+- `noiseband.py` — noise-band intraday momentum on SPY/QQQ and its walk-forward test (rules approved 2026-11-13, not yet run).
 
 ## Reproduce
 
