@@ -52,9 +52,11 @@ Protocol:
      Anything else is FAIL: do not paper trade that asset. No re-tuning.
 """
 import datetime as dt
+import getpass
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -92,9 +94,20 @@ def fetch(data_dir, months):
             q = dict(symbols=pair, timeframe="5Min", start=start, end=end, limit=10000, sort="asc")
             if token:
                 q["page_token"] = token
-            req = urllib.request.Request(URL + "?" + urllib.parse.urlencode(q), headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as r:
-                page = json.load(r)
+            page = None
+            while page is None:
+                req = urllib.request.Request(URL + "?" + urllib.parse.urlencode(q), headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as r:
+                        page = json.load(r)
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode("utf-8", "replace")[:300]
+                    if e.code in (401, 403) and not headers:
+                        print(f"Alpaca wants keys for crypto bars (HTTP {e.code}). Typed keys are hidden and not saved.")
+                        headers = {"APCA-API-KEY-ID": getpass.getpass("Alpaca key ID: ").strip(),
+                                   "APCA-API-SECRET-KEY": getpass.getpass("Alpaca secret key: ").strip()}
+                    else:
+                        sys.exit(f"Alpaca HTTP {e.code} for {pair}: {body}")
             bars += (page.get("bars") or {}).get(pair) or []
             token = page.get("next_page_token")
             if not token:
