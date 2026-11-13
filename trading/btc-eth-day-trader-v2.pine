@@ -1,0 +1,152 @@
+//@version=5
+// ─────────────────────────────────────────────────────────────────
+// BTC-ETH Day Trader v2 — PAPER FIRST
+// Derived from qqq-day-trader-v2.pine (Nov 9, 2026). Same system:
+// long-only, 5-min chart, EMA 9/21 crossover + VWAP + RSI filter,
+// but ONLY when price is above its 50 EMA on the 15-min chart.
+// Entries Mon–Fri 09:30–11:30 ET. Flat by ~15:55 ET. $25 risk/trade.
+// Target 1.5x ATR. Sends TradersPost webhook JSON via alert() calls.
+//
+// CHANGES vs the QQQ original (all three matter):
+// 1. FRACTIONAL sizing. The original rounds down to whole units
+//    (math.floor), which on BTC means 1 whole coin (~$75k notional,
+//    ~$200 risk per trade instead of $25). Here qty is a float:
+//    $25 risk / stop distance, printed with 6 decimals (e.g. 0.125).
+// 2. No whole-share cap. The original's 50-share cap is replaced by
+//    a max-NOTIONAL cap ($25,000) so a dead-flat bar can't size us
+//    huge on a $75k asset. The $0.50 absolute stop floor is likewise
+//    replaced by a price-relative floor (0.05% of price).
+// 3. Ticker is parameterized (syminfo.ticker) instead of hardcoded
+//    "QQQ", so this one file serves BTCUSD and ETHUSD.
+// 4. Session days FIXED. The original used "12345" believing it was
+//    Mon–Fri. In Pine, session day digits are 1=Sunday … 7=Saturday,
+//    so "12345" is actually Sun–Thu: the Nov 9 backtests showed
+//    Sunday trades and ZERO Friday trades in 54. Mon–Fri is "23456".
+//    (This bug is in the QQQ/BABA originals too — fix there as well.)
+//
+// BACKTEST NOTE (Nov 9, 2026, unchanged script): BTCUSD PF 2.63
+// (14 trades, 64% win) and ETHUSD PF 4.64 (9 trades, 67% win) — both
+// PASS the PF >= 1.2 gate, BUT on only ~1 month of 5-min bars
+// (TradingView Essential ~10k-bar limit). Thin evidence: re-backtest
+// THIS variant before wiring anything, and kill it if PF < 1.2.
+//
+// HOW TO USE
+// 1. Open BTCUSD (or ETHUSD) on a 5-minute chart, add this script.
+// 2. Backtest in Strategy Tester. Kill it if profit factor < 1.2.
+// 3. If it passes, create an alert: condition = "alert() function
+//    calls only", paste your TradersPost webhook URL, tick Webhook URL.
+//    No message needed — the script builds the JSON itself.
+//    (TradingView needs 2FA on before webhooks will fire.)
+//    NOTE: syminfo.ticker gives "BTCUSD" on COINBASE:BTCUSD, while
+//    Alpaca crypto wants "BTC/USD" — map the symbol in the
+//    TradersPost subscription at wiring time, don't edit the script.
+//
+// LIVE MECHANICS (same as the QQQ original)
+// - The entry alert carries buy + quantity + stop/take-profit as
+//   percentages, so TradersPost places a bracket (OTOCO) with the
+//   entry. Alpaca supports brackets. The stop/target exit at the
+//   broker automatically — no exit webhook needed for those.
+// - The only exit webhook is the flat-by-close ("exit" action).
+// - A safety exit alert also fires if Pine's own bracket closed the
+//   position (gap through stop/target). If the broker already exited,
+//   TradersPost treats it as a no-op.
+// - In TradersPost, tick "Allow signal override" for quantity,
+//   take profit and stop loss, or the signal's values are ignored.
+// ─────────────────────────────────────────────────────────────────
+
+strategy("BTC-ETH Day Trader v2", shorttitle="BTCETH-DT-v2", overlay=true,
+     initial_capital=100000, currency=currency.USD,
+     pyramiding=0, calc_on_every_tick=false,
+     commission_type=strategy.commission.percent, commission_value=0)
+
+// ---------- Inputs ----------
+fastLen     = input.int(9,  "Fast EMA",  minval=2)
+slowLen     = input.int(21, "Slow EMA",  minval=3)
+rsiLen      = input.int(14, "RSI length")
+rsiMax      = input.int(68, "RSI max for entry")
+atrLen      = input.int(14, "ATR length")
+stopMult    = input.float(1.0, "Stop = ATR x", step=0.1)
+tpMult      = input.float(1.5, "Target = ATR x", step=0.1)
+riskUsd     = input.float(25.0, "Risk per trade ($)")
+maxNotional = input.float(25000.0, "Max notional per trade ($)")
+minStopPct  = input.float(0.05, "Min stop = % of price", step=0.01)
+// Pine session days: 1=Sunday … 7=Saturday, so Mon–Fri is "23456".
+// ("12345" is Sun–Thu — the bug in the QQQ original.)
+tradeWindow = input.session("0930-1130:23456", "Trade window (ET)")
+eodSess     = input.session("1550-1555:23456", "Flat-by-close window (ET)")
+useFilter   = input.bool(true, "Use 15-min trend filter")
+trendTF     = input.timeframe("15", "Trend timeframe")
+trendLen    = input.int(50, "Trend EMA length")
+
+// ---------- Indicators ----------
+emaFast = ta.ema(close, fastLen)
+emaSlow = ta.ema(close, slowLen)
+rsiVal  = ta.rsi(close, rsiLen)
+atrVal  = ta.atr(atrLen)
+vwapVal = ta.vwap(hlc3)
+
+// Higher-timeframe trend: price above its 50 EMA on the 15-min chart.
+trendEma = request.security(syminfo.tickerid, trendTF, ta.ema(close, trendLen))
+trendUp  = close > trendEma
+
+inWindow = not na(time(timeframe.period, tradeWindow, "America/New_York"))
+eodBar   = not na(time(timeframe.period, eodSess, "America/New_York"))
+
+// Ticker for the webhook JSON: the chart's own symbol (BTCUSD, ETHUSD).
+tickerStr = syminfo.ticker
+
+// ---------- Entry ----------
+// Crossover + price above VWAP + RSI not overbought + in window + flat
+// + (if filter on) bigger trend up.
+longSignal = ta.crossover(emaFast, emaSlow) and close > vwapVal and rsiVal < rsiMax and inWindow and (not useFilter or trendUp)
+
+// Risk-based sizing (FRACTIONAL — crypto): $25 risk / stop distance.
+// Stop is 1x ATR, floored at 0.05% of price so a dead-flat morning
+// can't size us huge; qty is then capped by max notional.
+// NO math.floor: qty stays a float (e.g. 0.125 BTC, 1.25 ETH).
+stopDist = math.max(atrVal * stopMult, close * minStopPct / 100)
+riskQty  = riskUsd / stopDist
+capQty   = maxNotional / close
+tradeQty = math.min(riskQty, capQty)
+tradeQty := math.max(tradeQty, 0.0001)
+
+var float entryStop = na
+var float entryTp   = na
+
+if longSignal and strategy.position_size == 0 and not na(atrVal)
+    entryStop := close - stopDist
+    entryTp   := close + stopDist * tpMult / stopMult
+    strategy.entry("Long", strategy.long, qty=tradeQty)
+    // TradersPost webhook JSON (percent-form bracket, ATR-derived).
+    // Quantity printed with 6 decimals so fractions survive.
+    stopPct = stopDist / close * 100
+    tpPct   = (entryTp - close) / close * 100
+    msg = '{"ticker":"' + tickerStr + '","action":"buy","quantity":' + str.tostring(tradeQty, "#.######") +
+         ',"price":' + str.tostring(close, format.mintick) +
+         ',"stopLoss":{"type":"stop","percent":' + str.tostring(stopPct, "#.##") +
+         '},"takeProfit":{"percent":' + str.tostring(tpPct, "#.##") + '}}'
+    alert(msg, alert.freq_once_per_bar_close)
+
+// ---------- Exits (backtest modeling; live bracket sits at the broker) ----------
+if strategy.position_size > 0
+    strategy.exit("Exit", "Long", stop=entryStop, limit=entryTp)
+
+// ---------- Flat by close ----------
+if strategy.position_size > 0 and eodBar
+    strategy.close("Long", comment="EOD")
+    alert('{"ticker":"' + tickerStr + '","action":"exit"}', alert.freq_once_per_bar_close)
+
+// ---------- Safety: Pine closed the position this bar (gap thru stop/target) ----------
+if strategy.position_size[1] > 0 and strategy.position_size == 0 and not eodBar
+    alert('{"ticker":"' + tickerStr + '","action":"exit"}', alert.freq_once_per_bar_close)
+
+// ---------- Plots ----------
+plot(emaFast, "EMA 9",  color=color.new(color.teal, 0))
+plot(emaSlow, "EMA 21", color=color.new(color.orange, 0))
+plot(vwapVal, "VWAP",   color=color.new(color.gray, 0))
+plot(trendEma, "Trend EMA 50 (15m)", color=color.new(color.purple, 0))
+plotshape(longSignal and strategy.position_size == 0, "Buy", shape.labelup,
+     location.belowbar, color.new(color.green, 0), text="BUY", textcolor=color.white, size=size.tiny)
+plotshape(strategy.position_size[1] > 0 and strategy.position_size == 0, "Exit", shape.labeldown,
+     location.abovebar, color.new(color.red, 0), text="EXIT", textcolor=color.white, size=size.tiny)
+bgcolor(inWindow ? color.new(color.green, 95) : na)

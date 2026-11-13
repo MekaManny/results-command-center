@@ -244,7 +244,7 @@ and there is no re-tuning on this data.
 Rules, long only: EMA 9 crosses above EMA 21 on a 5-minute bar that also
 closes above VWAP, has RSI(14) under 68 and closes above the 15-minute EMA 50;
 entry at the next open; stop 1x ATR(14), floored at 0.05% of price; target
-1.5x ATR(14); $25 risk, fractional size, notional capped at $25,000.
+1.5x the stop distance; $25 risk, fractional size, notional capped at $25,000.
 
 - Data: BTC/USD and ETH/USD 5-minute bars from Alpaca's crypto data API,
   12 months back by default. The actual date range and bar count per asset
@@ -260,24 +260,31 @@ entry at the next open; stop 1x ATR(14), floored at 0.05% of price; target
   00:00–11:30, flat 15:55) on the second half, and the morning session
   itself as a check that this port matches the morning variant's result.
 
-The reference `btc-eth-day-trader-v2.pine` is **not in the repo yet**: it did
-not arrive with the brief. The script was written from the rule summary, so
-these details are pinned by this script and have not been checked against the
-Pine source:
+`btc-eth-day-trader-v2.pine` is the reference, copied in unchanged. The
+script was checked against it line by line and matches it on: the crossover
+on the signal bar with the three filters on that bar's close; the 15-minute
+EMA 50 taken from the last completed 15-minute bar; entry at the next open;
+stop and target measured from the signal bar's close, with
+stopDist = max(1x ATR, 0.05% of close) and target = 1.5x stopDist, so the
+target widens when the floor binds; size = min($25 / stopDist, $25,000 /
+close); the bracket first able to fill on the bar after the entry bar;
+Monday to Friday in New York time.
 
-- The crossover must happen on the signal bar itself (not just EMA 9 above
-  EMA 21), with the other three filters true on that same bar's close.
-- VWAP is the daily VWAP reset at 00:00 UTC (TradingView's default anchor for
-  crypto), typical price weighted by Alpaca's own volume.
-- The 15-minute EMA 50 is the last completed 15-minute bar's value.
-- ATR is the signal bar's; stop and target are measured from the fill.
-- The target is 1.5x ATR, not 1.5x the stop distance, so when the 0.05% floor
-  widens the stop the target does not widen with it.
-- The stop wins a bar that touches both stop and target; a bar that opens
-  through the stop fills at the open.
-- Overnight: last signal bar 09:20, last fill 09:25, flat at the 09:30 open.
-- Alpaca omits 5-minute bars with no trades; indicators run on the bars that
-  exist. The run prints how complete each series is.
+Where this test differs from a TradingView run of the Pine:
+
+- **Costs.** The Pine has `commission_value=0`, so the morning result that
+  passed the gate (BTC PF 2.63 on 14 trades, ETH PF 4.64 on 9 trades, about
+  one month) was before costs. This test charges 0.06% per side as specified.
+  The run also prints the morning session at zero cost; that row is the one
+  comparable to the TradingView numbers.
+- **Same-bar stop and target.** TradingView guesses the path inside the bar;
+  here the stop always wins.
+- **Data.** Alpaca bars and Alpaca volume for VWAP (daily reset at 00:00 UTC),
+  not the TradingView chart's exchange. Alpaca omits 5-minute bars with no
+  trades; the run prints how complete each series is.
+- **Session inputs.** Overnight: last signal bar 09:20, last fill 09:25, flat
+  at the 09:30 open. A 09:25 signal would fill at 09:30 with nothing left to
+  flatten it, so it is excluded.
 
 Reproduce (crypto bars need no key; keys in the environment are used if set):
 

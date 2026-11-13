@@ -19,13 +19,24 @@ Rules (long only, one position per asset):
     * RSI(14) below 68
     * close above the EMA(50) of the last completed 15-minute bar
   entry   next bar's open
-  stop    entry - max(1.0 x ATR(14) of the signal bar, 0.05% of entry)
-  target  entry + 1.5 x ATR(14) of the signal bar
-  size    $25 / stop distance, fractional, notional capped at $25,000
+  stop    signal close - stopDist, where
+          stopDist = max(1.0 x ATR(14), 0.05% of the signal close)
+  target  signal close + 1.5 x stopDist (so it widens when the floor binds)
+  size    min($25 / stopDist, $25,000 / signal close), fractional
   exit    stop, target, or the open of the first bar at or after the flat
-          time; the stop wins a bar that touches both; a bar that opens beyond
-          the stop or target fills at that open
+          time. As in the Pine backtest, the bracket is placed on the close
+          of the entry bar, so it can first fill on the bar AFTER the entry
+          bar. A bar that opens beyond the stop or target fills at that open.
+          The stop wins a bar that touches both.
   costs   0.06% of notional on every fill (entry and exit)
+
+Checked line by line against trading/btc-eth-day-trader-v2.pine. Known
+differences from a TradingView run of that script:
+  * costs: the Pine has commission_value=0; this test charges 0.06% per side
+  * a bar that touches both stop and target: TradingView guesses the path
+    inside the bar from its open; here the stop always wins
+  * bars and VWAP volume are Alpaca's, not the TradingView chart's exchange
+  * the Pine's flat-by-close and trade-window inputs are set per session below
 
 Sessions (New York time, signal bar Monday to Friday):
   overnight  signal bars 00:00-09:20, fills by 09:25, flat at 09:30   <- the test
@@ -143,7 +154,7 @@ def run(df, sym, session, p):
     mins = (ny.hour * 60 + ny.minute).values
     wday = ny.weekday.values
     day = ny.date
-    o, h, l = df.open.values, df.high.values, df.low.values
+    o, h, l, c = df.open.values, df.high.values, df.low.values, df.close.values
     t = df.index
     trades, pos = [], False
     for i in range(1, len(df)):
@@ -151,19 +162,19 @@ def run(df, sym, session, p):
             flat_ts = (pd.Timestamp(day[i - 1]) + pd.Timedelta(minutes=flat_min)).tz_localize(NY)
             a = atr[i - 1]
             if t[i] < flat_ts and np.isfinite(a) and a > 0:
-                entry = o[i]
-                dist = max(p["stop_atr"] * a, p["stop_floor"] * entry)
-                stop, tgt = entry - dist, entry + p["tgt_atr"] * a
-                qty = min(p["risk"] / dist, p["max_notional"] / entry)
+                entry, ref = o[i], c[i - 1]
+                dist = max(p["stop_atr"] * a, p["stop_floor"] * ref)
+                stop, tgt = ref - dist, ref + dist * p["tgt_atr"] / p["stop_atr"]
+                qty = max(min(p["risk"] / dist, p["max_notional"] / ref), 0.0001)
                 pos, i_in = True, i
         if pos:
             px = reason = None
             if t[i] >= flat_ts:
                 px, reason = o[i], "flat"
-            elif l[i] <= stop:
+            elif i > i_in and l[i] <= stop:
                 px, reason = min(stop, o[i]), "stop"
-            elif h[i] >= tgt:
-                px, reason = (max(tgt, o[i]) if i > i_in else tgt), "target"
+            elif i > i_in and h[i] >= tgt:
+                px, reason = max(tgt, o[i]), "target"
             if px is not None:
                 fees = p["cost"] * qty * (entry + px)
                 trades.append(dict(sym=sym, session=session, entry_time=t[i_in], exit_time=t[i],
@@ -219,6 +230,10 @@ def main_run(data_dir):
                 if session == "combined" and half == "first":
                     continue
                 rows[f"{sym} {session} {half} half"] = stats(part)
+            if session == "morning":
+                free = run(df, sym, session, {**PARAMS, "cost": 0.0})
+                rows[f"{sym} morning second half, ZERO cost"] = stats(
+                    free[free.entry_time.dt.tz_convert(NY).dt.date >= split] if len(free) else free)
             if session == "overnight":
                 s2 = rows[f"{sym} overnight second half"]
                 verdicts[sym] = verdict(s2)
@@ -228,6 +243,7 @@ def main_run(data_dir):
                           f"avg fees ${x.fees.mean():.2f} per round trip, exits {x.reason.value_counts().to_dict()}")
     print("\n" + pd.DataFrame(rows).T.to_string())
     print("\n'combined' is information only and 'morning' is a port check; neither affects the verdict.")
+    print("The ZERO-cost morning row is the one comparable to the TradingView backtest (commission 0).")
     print(f"\nPass bar: overnight second-half PF >= {MIN_PF}, max DD < ${MAX_DD:.0f}, trades >= {MIN_TRADES}")
     for sym, v in verdicts.items():
         s = rows[f"{sym} overnight second half"]
