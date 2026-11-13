@@ -8,7 +8,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
-- `crypto_overnight.py` — BTC-ETH Day Trader v2 rules on an overnight session, walk-forward (below: **not yet run, no verdict**).
+- `crypto_overnight.py` — BTC-ETH Day Trader v2 rules on an overnight session, walk-forward (result below: FAIL on both).
 
 ## Reproduce
 
@@ -229,10 +229,65 @@ python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/cpi_fomc.py <data_dir>
 ```
 
-## BTC-ETH Day Trader v2, overnight session: NOT YET RUN (script added 2026-11-13)
+## BTC-ETH Day Trader v2, overnight session: FAIL on both (run 2026-11-13)
 
-**Verdict per asset: BTC — none yet. ETH — none yet. Do not paper trade either
-until the run below is recorded here.**
+**Verdict: BTC — FAIL. ETH — FAIL. Do not paper trade the overnight session on
+either asset. No re-tuning on this data.**
+
+| Asset | Second-half overnight PF | Max DD | Trades | Pass bar | Verdict |
+|---|---|---|---|---|---|
+| BTC | 0.30 | $2,858 | 150 | PF >= 1.2, DD < $150, trades >= 10 | **FAIL** |
+| ETH | 0.37 | $2,731 | 155 | PF >= 1.2, DD < $150, trades >= 10 | **FAIL** |
+
+Run once, with every parameter held fixed from the morning variant.
+
+Data: Alpaca crypto 5-minute bars, 2025-11-12 00:00 UTC to 2026-11-13 07:30
+UTC. BTC/USD 105,381 bars (99.9% of 5-minute slots present, 21,272 with zero
+volume). ETH/USD 101,138 bars (95.9% present, 46,569 with zero volume). Split
+by New York date: first half 2025-11-11 to 2026-05-12, second half 2026-05-13
+to 2026-11-13. Costs 0.06% per side on every fill.
+
+| Asset | Session | Half | Trades | Win % | Profit factor | Net P&L | Max DD | Avg win | Avg loss | Largest loss |
+|---|---|---|---|---|---|---|---|---|---|---|
+| BTC | Overnight | First | 140 | 37.9 | 0.29 | -$2,534.38 | $2,584.74 | $19.94 | -$41.28 | -$61.65 |
+| BTC | Overnight | **Second (the test)** | 150 | 43.3 | 0.30 | -$2,811.41 | $2,857.88 | $18.63 | -$47.32 | -$100.68 |
+| ETH | Overnight | First | 143 | 34.3 | 0.28 | -$2,883.59 | $2,883.59 | $23.13 | -$42.73 | -$96.62 |
+| ETH | Overnight | **Second (the test)** | 155 | 41.9 | 0.37 | -$2,730.66 | $2,730.66 | $24.46 | -$48.01 | -$469.62 |
+
+Information only, not part of the verdict:
+
+| Asset | Session | Half | Trades | Win % | Profit factor | Net P&L | Max DD | Avg win | Avg loss | Largest loss |
+|---|---|---|---|---|---|---|---|---|---|---|
+| BTC | Combined day (00:00–11:30, flat 15:55) | Second | 205 | 44.9 | 0.36 | -$3,360.37 | $3,405.82 | $20.52 | -$46.44 | -$100.68 |
+| ETH | Combined day (00:00–11:30, flat 15:55) | Second | 208 | 44.2 | 0.44 | -$3,024.80 | $3,047.37 | $26.15 | -$46.81 | -$469.62 |
+| BTC | Morning (port check) | First | 42 | 33.3 | 0.45 | -$512.21 | $545.14 | $29.92 | -$33.25 | -$44.53 |
+| BTC | Morning (port check) | Second | 54 | 48.1 | 0.54 | -$548.38 | $591.49 | $24.66 | -$42.48 | -$82.70 |
+| BTC | Morning, zero cost | Second | 54 | 48.1 | 1.21 | +$170.38 | $179.76 | $37.55 | -$28.78 | -$68.59 |
+| ETH | Morning (port check) | First | 38 | 31.6 | 0.37 | -$595.09 | $595.09 | $28.98 | -$36.26 | -$53.52 |
+| ETH | Morning (port check) | Second | 53 | 50.9 | 0.77 | -$244.22 | $508.49 | $30.20 | -$40.76 | -$65.77 |
+| ETH | Morning, zero cost | Second | 53 | 52.8 | 1.58 | +$428.48 | $304.61 | $41.67 | -$29.53 | -$46.83 |
+
+What the numbers say:
+
+- **Costs decide it.** Second-half overnight positions averaged about $18,000
+  notional (BTC $18,243, ETH $17,668), so a round trip cost about $21.50 in
+  fees (BTC $21.89, ETH $21.20) against a $25 risk. The average win was about
+  $19 to $24 after fees and the average loss about $47 to $48, with a win
+  rate near 42%.
+- **Exits** (second-half overnight): BTC 81 stops, 66 targets, 3 flat at
+  09:30; ETH 79 stops, 71 targets, 5 flat.
+- **The morning variant also fails here once costs are charged.** The
+  TradingView result that passed the gate (BTC PF 2.63 on 14 trades, ETH PF
+  4.64 on 9 trades, about one month) was run with commission 0. On this
+  six-month second half the morning session at zero cost is PF 1.21 (BTC) and
+  1.58 (ETH), both with max drawdown over $150; at 0.06% per side it is 0.54
+  and 0.77. This is a port on Alpaca bars, not a TradingView re-run, and it is
+  not a verdict on the morning variant, but it does not support wiring it.
+- **Data caveats.** A large share of the bars carry zero volume (20% of BTC,
+  46% of ETH), which affects VWAP. ETH's largest loss, -$469.62, is far beyond
+  the $25 risk plus fees, which means a bar opened well through the stop; it
+  was not checked whether that is a real move or a bad print in Alpaca's
+  bars. Removing that one trade would not change the verdict.
 
 `crypto_overnight.py` tests the BTC-ETH Day Trader v2 morning variant with
 **only the session changed**: entries 00:00–09:30 New York, Monday to Friday,
@@ -286,7 +341,8 @@ Where this test differs from a TradingView run of the Pine:
   at the 09:30 open. A 09:25 signal would fill at 09:30 with nothing left to
   flatten it, so it is excluded.
 
-Reproduce (crypto bars need no key; keys in the environment are used if set):
+Reproduce (Alpaca rate-limited the keyless request on this run, so the fetch
+asked for keys; they are typed at a hidden prompt and never saved):
 
 ```
 python3 trading/crypto_overnight.py fetch <data_dir> 12
