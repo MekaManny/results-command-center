@@ -8,7 +8,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
-- `lasthalfhour.py` — last-half-hour momentum on SPY/QQQ and its walk-forward test (rules approved 2026-11-13, not yet run).
+- `lasthalfhour.py` — last-half-hour momentum on SPY/QQQ and its walk-forward test (result below: FAIL on both).
 
 ## Reproduce
 
@@ -227,6 +227,71 @@ tests above will give slightly different numbers):
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/cpi_fomc.py <data_dir>
+```
+
+## Last-half-hour momentum walk-forward: FAIL on both (run 2026-11-13)
+
+**Do not paper trade. No re-tuning on this data.**
+
+`lasthalfhour.py`, run once with rules approved before any data was loaded and
+nothing tuned. Signal once per day: close of the 09:55 bar versus the previous
+session's close; up trades long, down trades short. Entry at the 15:30 bar
+open, exit at the 15:55 bar close. Stop distance is the average 15:30-15:55
+high-to-low range over the prior 20 full sessions, filled at the stop price.
+$25 risk, fractional shares, no notional cap; 1 cent per share slippage on
+each side. Early-close days skipped.
+
+Data: SPY and QQQ, Alpaca SIP feed, 5-minute bars, 2024-11-11 to 2026-11-13
+(SPY 95,885 bars, QQQ 96,260), split at 2025-11-12.
+
+| Asset | Half | Side | Trades | Win % | Profit factor | Net | Max DD | Stopped | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| SPY | First (reference) | Combined | 228 | 51.3 | 1.01 | +$13 | $332 | 37 | |
+| SPY | First (reference) | Long | 124 | 54.0 | 1.12 | +$95 | $116 | 18 | |
+| SPY | First (reference) | Short | 104 | 48.1 | 0.89 | -$83 | $271 | 19 | |
+| SPY | **Second (the test)** | **Combined** | 249 | 41.8 | 0.84 | -$259 | $422 | 27 | **FAIL** |
+| SPY | Second | Long | 140 | 37.1 | 0.71 | -$252 | $278 | 13 | |
+| SPY | Second | Short | 109 | 47.7 | 0.99 | -$7 | $260 | 14 | |
+| QQQ | First (reference) | Combined | 228 | 48.2 | 0.99 | -$23 | $436 | 34 | |
+| QQQ | First (reference) | Long | 127 | 49.6 | 1.02 | +$13 | $118 | 16 | |
+| QQQ | First (reference) | Short | 101 | 46.5 | 0.96 | -$36 | $367 | 18 | |
+| QQQ | **Second (the test)** | **Combined** | 251 | 46.2 | 1.08 | +$119 | $241 | 24 | **FAIL** |
+| QQQ | Second | Long | 136 | 46.3 | 1.05 | +$37 | $188 | 12 | |
+| QQQ | Second | Short | 115 | 46.1 | 1.11 | +$82 | $256 | 12 | |
+
+Pass bar for this test: second-half profit factor of at least 1.2, max
+drawdown under $300 (raised from $150 because the strategy trades daily) and
+at least 100 second-half trades, long and short combined. SPY misses on
+profit factor and drawdown. QQQ clears the drawdown and trade count but its
+profit factor is 1.08.
+
+What the numbers say:
+
+- Across about 480 trades per asset the result is close to a coin flip: the
+  four half-by-asset profit factors are 1.01, 0.84, 0.99 and 1.08.
+- Nothing is consistent between halves. SPY longs were the best line in the
+  first half (1.12) and the worst in the second (0.71).
+- Information only: 233 of 477 SPY trades and 129 of 479 QQQ trades were above
+  the $10,000 notional cap the older tests use. With that cap applied the
+  second half is PF 0.84 (SPY) and 1.08 (QQQ), so the cap changes nothing.
+
+Known flaw in the run, not fixed because the script is not changed after the
+run: early closes are detected from volume, and the two assets disagree. SPY
+skipped 2024-11-29, 2024-12-24, 2025-11-28 and 2025-12-24 but not 2025-07-03;
+QQQ skipped 2025-07-03 but not 2025-11-28. So at least one early-close day
+per asset was traded on after-hours bars and counted in the 20-session range.
+That is one or two trades out of roughly 480 and cannot move a profit factor
+of 0.84 or 1.08 to 1.2.
+
+Other days not traded: the first day (no previous close), and on SPY
+2025-10-22 and 2026-05-27 (10:00 price equal to the previous close).
+
+Reproduce:
+
+```
+export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
+python3 trading/fetch_alpaca.py <data_dir> 24
+python3 trading/lasthalfhour.py <data_dir>
 ```
 
 ## Pine script check
