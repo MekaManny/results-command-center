@@ -8,6 +8,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
+- `crypto_overnight.py` — BTC-ETH Day Trader v2 rules on an overnight session, walk-forward (below: **not yet run, no verdict**).
 
 ## Reproduce
 
@@ -226,6 +227,63 @@ tests above will give slightly different numbers):
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/cpi_fomc.py <data_dir>
+```
+
+## BTC-ETH Day Trader v2, overnight session: NOT YET RUN (script added 2026-11-13)
+
+**Verdict per asset: BTC — none yet. ETH — none yet. Do not paper trade either
+until the run below is recorded here.**
+
+`crypto_overnight.py` tests the BTC-ETH Day Trader v2 morning variant with
+**only the session changed**: entries 00:00–09:30 New York, Monday to Friday,
+flat by 09:30 (the morning variant enters 09:30–11:30 and is flat about
+15:55). Every parameter is held fixed from the morning variant. Nothing is
+tuned: the script has no grid. If the fixed rules fail, the verdict is FAIL
+and there is no re-tuning on this data.
+
+Rules, long only: EMA 9 crosses above EMA 21 on a 5-minute bar that also
+closes above VWAP, has RSI(14) under 68 and closes above the 15-minute EMA 50;
+entry at the next open; stop 1x ATR(14), floored at 0.05% of price; target
+1.5x ATR(14); $25 risk, fractional size, notional capped at $25,000.
+
+- Data: BTC/USD and ETH/USD 5-minute bars from Alpaca's crypto data API,
+  12 months back by default. The actual date range and bar count per asset
+  are printed by the run and go here.
+- Costs: 0.06% of notional per side on every fill.
+- Split: each asset's data is cut in half by calendar date. Both halves are
+  reported (trades, win rate, profit factor, net P&L, max drawdown, average
+  win and loss, largest loss). The second half is the confirmation.
+- Pass bar per asset: second-half overnight profit factor of at least 1.2 AND
+  max drawdown under $150 AND at least 10 second-half trades. PASS means a
+  candidate to wire for paper; FAIL means do not paper trade that asset.
+- For information only, not part of the verdict: the combined day (entries
+  00:00–11:30, flat 15:55) on the second half, and the morning session
+  itself as a check that this port matches the morning variant's result.
+
+The reference `btc-eth-day-trader-v2.pine` is **not in the repo yet**: it did
+not arrive with the brief. The script was written from the rule summary, so
+these details are pinned by this script and have not been checked against the
+Pine source:
+
+- The crossover must happen on the signal bar itself (not just EMA 9 above
+  EMA 21), with the other three filters true on that same bar's close.
+- VWAP is the daily VWAP reset at 00:00 UTC (TradingView's default anchor for
+  crypto), typical price weighted by Alpaca's own volume.
+- The 15-minute EMA 50 is the last completed 15-minute bar's value.
+- ATR is the signal bar's; stop and target are measured from the fill.
+- The target is 1.5x ATR, not 1.5x the stop distance, so when the 0.05% floor
+  widens the stop the target does not widen with it.
+- The stop wins a bar that touches both stop and target; a bar that opens
+  through the stop fills at the open.
+- Overnight: last signal bar 09:20, last fill 09:25, flat at the 09:30 open.
+- Alpaca omits 5-minute bars with no trades; indicators run on the bars that
+  exist. The run prints how complete each series is.
+
+Reproduce (crypto bars need no key; keys in the environment are used if set):
+
+```
+python3 trading/crypto_overnight.py fetch <data_dir> 12
+python3 trading/crypto_overnight.py run <data_dir>
 ```
 
 ## Pine script check
