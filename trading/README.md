@@ -9,7 +9,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
 - `lasthalfhour.py` — last-half-hour momentum on SPY/QQQ and its walk-forward test (result below: FAIL on both).
-- `noiseband.py` — noise-band intraday momentum on SPY/QQQ and its walk-forward test (rules approved 2026-11-13, not yet run).
+- `noiseband.py` — noise-band intraday momentum on SPY/QQQ and its walk-forward test (result below: FAIL on both; QQQ misses on drawdown only).
 
 ## Reproduce
 
@@ -293,6 +293,72 @@ Reproduce:
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/lasthalfhour.py <data_dir>
+```
+
+## Noise-band intraday momentum walk-forward: FAIL on both (run 2026-11-13)
+
+**Do not paper trade. No re-tuning on this data.** QQQ cleared the profit
+factor and trade count and missed only the drawdown cap ($334 against $300).
+By the rule that is a FAIL; the cap is not to be moved after the run.
+
+`noiseband.py`, run once with rules approved before the run and nothing
+tuned. The "normal move" for each half-hour is the 14-session average of how
+far price sat from the day's open at that time. Upper band = max(open,
+previous close) plus the normal move; lower band = min(open, previous close)
+minus it. Checks only on the half-hour, 10:00 to 15:30, on bar closes, fills
+at the next open: close above the upper band goes long, below the lower band
+goes short; a long exits on a close below the higher of the upper band and
+the intraday VWAP (09:30 through the current bar), a short is the mirror;
+flat on the 15:55 bar close; re-entry and flips allowed. Size = $25 / (entry
+price x normal move), capped at $10,000 notional, no fixed stop. 1 cent per
+share slippage on each side.
+
+Data: the same bars as the last-half-hour test. SPY and QQQ, Alpaca SIP feed,
+5-minute bars, regular session, 2024-11-11 to 2026-11-13, split at 2025-11-12.
+Early closes skipped for both assets: 2024-11-29, 2024-12-24, 2025-07-03,
+2025-11-28, 2025-12-24 (the NYSE calendar; the volume flag again missed one
+day per asset, which is why the calendar was added).
+
+| Asset | Half | Side | Trades | Win % | Profit factor | Net | Max DD | Largest loss | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| SPY | First (reference) | Combined | 214 | 36.9 | 1.08 | +$161 | $383 | -$90.17 | |
+| SPY | First (reference) | Long | 104 | 42.3 | 0.97 | -$23 | $158 | -$90.17 | |
+| SPY | First (reference) | Short | 110 | 31.8 | 1.16 | +$184 | $447 | -$51.31 | |
+| SPY | **Second (the test)** | **Combined** | 246 | 35.4 | 0.90 | -$233 | $585 | -$70.89 | **FAIL** |
+| SPY | Second | Long | 127 | 36.2 | 0.85 | -$171 | $252 | -$56.54 | |
+| SPY | Second | Short | 119 | 34.5 | 0.95 | -$61 | $491 | -$70.89 | |
+| QQQ | First (reference) | Combined | 211 | 40.3 | 1.19 | +$362 | $409 | -$68.56 | |
+| QQQ | First (reference) | Long | 94 | 46.8 | 1.45 | +$286 | $177 | -$63.21 | |
+| QQQ | First (reference) | Short | 117 | 35.0 | 1.06 | +$76 | $501 | -$68.56 | |
+| QQQ | **Second (the test)** | **Combined** | 216 | 40.3 | 1.26 | +$518 | $334 | -$66.07 | **FAIL** (drawdown) |
+| QQQ | Second | Long | 112 | 39.3 | 0.96 | -$46 | $223 | -$66.07 | |
+| QQQ | Second | Short | 104 | 41.3 | 1.62 | +$564 | $210 | -$56.99 | |
+
+Pass bar for this test: second-half profit factor of at least 1.2, max
+drawdown under $300 and at least 100 second-half trades, long and short
+combined.
+
+What the numbers say:
+
+- SPY fails clearly: 0.90 and a $585 drawdown.
+- QQQ is the first result in this repo that is positive in both halves (1.19,
+  then 1.26), on more than 200 trades each. It still fails the bar that was
+  set before the run.
+- QQQ's profit is not stable by side: longs carried the first half (1.45
+  against 1.06 for shorts) and shorts carried the second (1.62 against 0.96
+  for longs).
+- The same rules lose on SPY over the same two years, which argues against
+  reading the QQQ result as a real edge rather than luck.
+- Losses are not bounded at $25: the largest single losses were $56 to $90.
+- The $10,000 cap bound on about 37% of SPY trades and 9% of QQQ trades.
+- Trades happened on 300 (SPY) and 276 (QQQ) of 503 sessions.
+
+Reproduce:
+
+```
+export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
+python3 trading/fetch_alpaca.py <data_dir> 24
+python3 trading/noiseband.py <data_dir>
 ```
 
 ## Pine script check
