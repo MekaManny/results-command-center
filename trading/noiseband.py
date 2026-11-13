@@ -67,9 +67,11 @@ CHECKS = list(range(595, 930, 30))          # bars starting 09:55 ... 15:25 (clo
 LOOKBACK, RISK, SLIP = 14, 25.0, 0.01
 EARLY_VOL_RATIO = 0.05
 MIN_PF, MAX_DD, MIN_TRADES = 1.2, 300, 100
-# NYSE 1:00 p.m. closes inside the data window (NYSE Group holiday and early-closings calendars)
+# NYSE 1:00 p.m. closes, Nov 2022 onward (NYSE Group holiday and early-closings calendars).
+# The 2022-2024 dates were added for the earlier-window run; no rule or number changed.
 NYSE_EARLY = {dt.date.fromisoformat(d) for d in
-              ("2024-11-29", "2024-12-24", "2025-07-03", "2025-11-28", "2025-12-24", "2026-11-27", "2026-12-24")}
+              ("2022-11-25", "2023-07-03", "2023-11-24", "2024-07-03",
+               "2024-11-29", "2024-12-24", "2025-07-03", "2025-11-28", "2025-12-24", "2026-11-27", "2026-12-24")}
 
 
 def load_regular(data_dir, sym):
