@@ -8,7 +8,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
-- `trendline_break.py` — trendline break-and-retest strategy and its walk-forward test (below: **not yet run, no verdict**).
+- `trendline_break.py` — trendline break-and-retest strategy and its walk-forward test (result below: FAIL on all four).
 
 ## Reproduce
 
@@ -229,10 +229,21 @@ python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/cpi_fomc.py <data_dir>
 ```
 
-## Trendline break and retest walk-forward: NOT YET RUN (script added 2026-11-13)
+## Trendline break and retest walk-forward: FAIL on all four (run 2026-11-13)
 
-**Verdict per asset: BTC, ETH, SPY, QQQ — none yet. Do not paper trade any of
-them until the run below is recorded here.**
+**Verdict: BTC — FAIL. ETH — FAIL. SPY — FAIL. QQQ — FAIL. Do not paper trade.
+No re-tuning on this data.**
+
+| Asset | Second-half PF | Max DD | Trades | Verdict |
+|---|---|---|---|---|
+| BTC | 0.36 | $6,457 | 605 | **FAIL** |
+| ETH | 0.23 | $7,319 | 472 | **FAIL** |
+| SPY | 0.28 | $212 | 36 | **FAIL** |
+| QQQ | 0.33 | $542 | 71 | **FAIL** |
+
+Pass bar: second-half profit factor of at least 1.2 AND max drawdown under
+$150 AND at least 10 second-half trades. Run once; results and discussion are
+after the rules.
 
 `trendline_break.py`, rules fixed before any data was loaded. The idea is from
 a YouTube Short (Tori Trades, "The Trendline Break Setup"), which gives no win
@@ -306,11 +317,70 @@ drawdown under $150 AND at least 10 second-half trades, long and short
 together. Anything else is FAIL: do not paper trade, no re-tuning on this
 data.
 
-Data: BTC/USD and ETH/USD from Alpaca's crypto data API, SPY and QQQ from
-Alpaca's SIP feed, 5-minute bars, 12 months. The actual date ranges, bar
-counts and split dates are printed by the run and go here.
+### Results
 
-Reproduce (crypto bars need no key; SPY/QQQ do):
+Data, 5-minute bars from Alpaca:
+
+| Asset | Source | Bars | Range | Split | First / second half bars |
+|---|---|---|---|---|---|
+| BTC | Alpaca crypto (BTC/USD) | 105,383 | 2025-11-11 to 2026-11-13 | 2026-05-13 | 52,674 / 52,709 |
+| ETH | Alpaca crypto (ETH/USD) | 101,140 | 2025-11-11 to 2026-11-13 | 2026-05-13 | 51,366 / 49,774 |
+| SPY | Alpaca SIP, regular session | 19,656 | 2025-11-12 to 2026-11-12 | 2026-05-14 | 9,750 / 9,906 |
+| QQQ | Alpaca SIP, regular session | 19,655 | 2025-11-12 to 2026-11-12 | 2026-05-14 | 9,749 / 9,906 |
+
+Costs: 0.06% per side crypto, 0.01% per side ETFs.
+
+Selection on first halves only:
+
+- Crypto: K=5 (11-bar pivots), SEP=10, WIN=5. Its combined first-half profit
+  factor was 0.43, the best of 27 variants that ranged from 0.22 to 0.43.
+  Every variant lost money on the first half, so the pick was the least bad.
+- ETFs: K=3 (7-bar pivots), SEP=10, WIN=10, combined first-half profit factor
+  1.24 on 99 trades. Only 6 of the 27 variants were above 1.0 on the first
+  half.
+
+| Asset | Half | Side | Trades | Win % | Profit factor | Net P&L | Max DD | Avg win | Avg loss | Largest loss |
+|---|---|---|---|---|---|---|---|---|---|---|
+| BTC | First (tuned) | All | 694 | 14.6 | 0.39 | -$7,455.45 | $7,463.02 | $46.64 | -$20.52 | -$352.66 |
+| BTC | First (tuned) | Long | 311 | 13.2 | 0.32 | -$3,565.76 | $3,565.76 | $40.23 | -$19.32 | -$71.79 |
+| BTC | First (tuned) | Short | 383 | 15.7 | 0.44 | -$3,889.68 | $3,900.91 | $51.01 | -$21.52 | -$352.66 |
+| BTC | **Second (unseen)** | **All** | 605 | 15.7 | 0.36 | -$6,457.41 | $6,457.41 | $38.55 | -$19.84 | -$80.38 |
+| BTC | Second (unseen) | Long | 284 | 18.3 | 0.46 | -$2,504.43 | $2,504.43 | $41.46 | -$20.09 | -$60.94 |
+| BTC | Second (unseen) | Short | 321 | 13.4 | 0.28 | -$3,952.98 | $3,955.75 | $35.03 | -$19.64 | -$80.38 |
+| ETH | First (tuned) | All | 508 | 20.7 | 0.48 | -$5,043.81 | $5,043.81 | $44.45 | -$24.10 | -$85.47 |
+| ETH | First (tuned) | Long | 242 | 20.7 | 0.46 | -$2,492.83 | $2,876.36 | $43.30 | -$24.26 | -$85.47 |
+| ETH | First (tuned) | Short | 266 | 20.7 | 0.50 | -$2,550.98 | $2,550.98 | $45.49 | -$23.95 | -$77.07 |
+| ETH | **Second (unseen)** | **All** | 472 | 13.3 | 0.23 | -$7,319.17 | $7,319.17 | $33.96 | -$23.13 | -$111.54 |
+| ETH | Second (unseen) | Long | 238 | 13.9 | 0.28 | -$3,389.61 | $3,389.61 | $40.80 | -$23.10 | -$82.51 |
+| ETH | Second (unseen) | Short | 234 | 12.8 | 0.17 | -$3,929.56 | $3,965.90 | $26.44 | -$23.15 | -$111.54 |
+| SPY | First (tuned) | All | 45 | 35.6 | 1.76 | +$168.54 | $80.19 | $24.36 | -$7.63 | -$16.37 |
+| SPY | First (tuned) | Long | 18 | 27.8 | 1.09 | +$8.78 | $59.23 | $22.02 | -$7.80 | -$16.37 |
+| SPY | First (tuned) | Short | 27 | 40.7 | 2.33 | +$159.77 | $46.18 | $25.42 | -$7.49 | -$15.97 |
+| SPY | **Second (unseen)** | **All** | 36 | 22.2 | 0.28 | -$206.97 | $212.38 | $10.09 | -$10.27 | -$30.42 |
+| SPY | Second (unseen) | Long | 26 | 23.1 | 0.35 | -$131.42 | $159.09 | $11.98 | -$10.16 | -$30.42 |
+| SPY | Second (unseen) | Short | 10 | 20.0 | 0.10 | -$75.54 | $79.10 | $4.43 | -$10.55 | -$16.71 |
+| QQQ | First (tuned) | All | 54 | 29.6 | 0.95 | -$18.67 | $151.76 | $23.51 | -$10.39 | -$31.83 |
+| QQQ | First (tuned) | Long | 29 | 27.6 | 1.07 | +$14.31 | $103.97 | $27.63 | -$9.84 | -$31.83 |
+| QQQ | First (tuned) | Short | 25 | 32.0 | 0.82 | -$32.98 | $63.82 | $19.40 | -$11.07 | -$17.86 |
+| QQQ | **Second (unseen)** | **All** | 71 | 22.5 | 0.33 | -$506.45 | $542.22 | $15.37 | -$13.68 | -$90.73 |
+| QQQ | Second (unseen) | Long | 42 | 19.0 | 0.24 | -$338.28 | $362.15 | $13.60 | -$13.15 | -$90.73 |
+| QQQ | Second (unseen) | Short | 29 | 27.6 | 0.45 | -$168.17 | $213.48 | $17.15 | -$14.54 | -$66.90 |
+
+What the numbers say:
+
+- **Crypto never worked, in or out of sample.** No variant was profitable on
+  the first half, and the second half is the same or worse. Win rates are 13%
+  to 21%.
+- **The ETF first-half result did not survive.** SPY went from a profit
+  factor of 1.76 on the tuned half to 0.28 on the unseen half, QQQ from 0.95
+  to 0.33. The first-half edge was a product of picking the best of 27.
+- **Neither direction passes on any asset.** The best second-half side is BTC
+  long at 0.46.
+- **Losses are not capped at $25.** With no hard stop, the largest single
+  losses were $352.66 (BTC, first half) and $111.54 (ETH, second half).
+
+Reproduce (Alpaca rate-limited the keyless crypto request on this run, so that
+fetch asked for keys at a hidden prompt; SPY/QQQ always need them):
 
 ```
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
