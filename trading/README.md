@@ -8,6 +8,7 @@ Three rule-based 5-minute strategies tested on BTC, ETH, SPY and QQQ.
 - `walkforward.py` — out-of-sample test of the fade: tune on the first half, test on the second.
 - `bullflag.py` — bull-flag continuation strategy and its walk-forward test (result below: FAIL).
 - `cpi_fomc.py` — CPI/FOMC second-move strategy and its walk-forward test (result below: not enough trades to know).
+- `trendline_break.py` — trendline break-and-retest strategy and its walk-forward test (below: **not yet run, no verdict**).
 
 ## Reproduce
 
@@ -226,6 +227,96 @@ tests above will give slightly different numbers):
 export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
 python3 trading/fetch_alpaca.py <data_dir> 24
 python3 trading/cpi_fomc.py <data_dir>
+```
+
+## Trendline break and retest walk-forward: NOT YET RUN (script added 2026-11-13)
+
+**Verdict per asset: BTC, ETH, SPY, QQQ — none yet. Do not paper trade any of
+them until the run below is recorded here.**
+
+`trendline_break.py`, rules fixed before any data was loaded. The idea is from
+a YouTube Short (Tori Trades, "The Trendline Break Setup"), which gives no win
+rate or track record and enters on any break of a hand-drawn line. This is a
+stricter mechanical version: nothing is drawn by hand or judged by eye.
+
+Exact rules, described for a short (break of an uptrend line). A long is the
+mirror image: break of a downtrend line through lower highs. Long and short
+are reported separately.
+
+- **Pivots.** A pivot low is a bar whose low is strictly below the lows of the
+  K bars on each side (K=2 is the 5-bar swing). It is usable only once
+  confirmed, K bars later.
+- **Trendline.** When a pivot low confirms, it is paired with the most recent
+  earlier confirmed pivot low at least SEP bars before it. If the newer low is
+  higher and no bar since the older one has closed below the line through
+  them, that is the uptrend line. Otherwise there is no uptrend line until a
+  later pivot low makes one.
+- **Break.** The first 5-minute close below the line. The line is then frozen
+  and extended at the same slope.
+- **Retest and entry.** Within WIN bars after the break bar, a bar's high must
+  reach the frozen line, and that bar or a later one must close below the
+  line. Entry is short at that close. No confirmation inside WIN bars: no
+  trade.
+- **Opposing line.** After entry it is re-drawn each time a pivot high
+  confirms: through that pivot and the most recent earlier anchor at least
+  SEP bars before it, if that anchor is higher. Otherwise it is left alone.
+- **Exit.** The first later 5-minute close above the opposing line, filled at
+  that close. SPY and QQQ are also flat at the close of the 15:55 New York bar
+  (or the last bar of an early-close session). Crypto has no time stop.
+- **Risk and size.** $25 divided by the distance from the entry price to the
+  opposing line at entry.
+- **Costs.** 0.06% per side crypto, 0.01% per side ETFs.
+
+Ambiguities and how they were resolved:
+
+- **The opposing line at entry.** The brief defines it through two pivots
+  formed after the break, but entry comes at most WIN bars after the break,
+  before two such pivots can confirm. So the first opposing line runs through
+  the highest high between the trendline's second pivot and the break bar (the
+  top before the break) and the highest high from the bar after the break to
+  the entry bar (the retest high). The retest high must be the lower of the
+  two or there is no trade. SEP does not apply to this first line; it does
+  apply to every later re-draw.
+- **Fills at the close.** Entry and exit fill at the signal bar's close, as
+  the brief says, not at the next open as in the other tests here.
+- **No hard stop.** The exit needs a close beyond the line, so a loss can be
+  larger than $25. The largest loss is reported.
+- **Size limits.** Notional is capped at $10,000 and a trade is skipped when
+  the entry-to-line distance is under 0.05% of price, both as in the other
+  tests. Without them a retest that closes just under the line would size to
+  an enormous position.
+- **One position per asset.** A setup that confirms while a position is open
+  is dropped.
+- **A new pivot that is not a higher low** removes the current uptrend line.
+  A broken line is used once.
+- **SPY and QQQ** use regular-session bars only. Both pivots, the break, the
+  retest and the entry must be in the same session, and there is no entry on
+  the 15:55 bar.
+- **Crypto bars.** Alpaca omits 5-minute bars with no trades. Bar counts (K,
+  SEP, WIN) are over the bars that exist.
+
+Walk-forward: each asset's bars are cut in half by time and the halves run
+separately. The 27 variants (K 2/3/5, SEP 10/20/30, WIN 5/10/20) are run on
+first halves only. One variant is picked per asset class (BTC+ETH, SPY+QQQ):
+best combined first-half profit factor, long and short together, with at
+least 30 first-half trades. It is run once on the second halves.
+
+Pass bar per asset: second-half profit factor of at least 1.2 AND max
+drawdown under $150 AND at least 10 second-half trades, long and short
+together. Anything else is FAIL: do not paper trade, no re-tuning on this
+data.
+
+Data: BTC/USD and ETH/USD from Alpaca's crypto data API, SPY and QQQ from
+Alpaca's SIP feed, 5-minute bars, 12 months. The actual date ranges, bar
+counts and split dates are printed by the run and go here.
+
+Reproduce (crypto bars need no key; SPY/QQQ do):
+
+```
+export APCA_API_KEY_ID=...  APCA_API_SECRET_KEY=...   # from your shell, never committed
+python3 trading/trendline_break.py fetch <data_dir> 12
+python3 trading/fetch_alpaca.py <data_dir> 12
+python3 trading/trendline_break.py <data_dir>
 ```
 
 ## Pine script check
